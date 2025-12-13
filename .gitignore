@@ -1,0 +1,82 @@
+# -----------------------------
+# Python
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+*.manifest
+*.spec
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Byte-compiled / optimized / DLL files
+*.so
+
+# Distribution / packaging
+dist/
+build/
+pip-wheel-metadata/
+
+# -----------------------------
+# FastAPI / Uvicorn logs
+# -----------------------------
+*.log
+logs/
+uvicorn.log
+
+# -----------------------------
+# Local data files (DO NOT UPLOAD)
+# -----------------------------
+fu_data.json
+all_tle_data.json
+data/assignments.json
+
+# In case your app creates any other runtime data files:
+data/*.json
+!data/.gitkeep
+
+# -----------------------------
+# Redis / Cache
+# -----------------------------
+dump.rdb
+
+# -----------------------------
+# Environment variables
+# -----------------------------
+.env
+.env.*
+*.env
+
+# -----------------------------
+# OS / Editor files
+# -----------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# JetBrains / PyCharm
+.idea/
+
+# -----------------------------
+# Other
+# -----------------------------
+*.sqlite
+*.db
