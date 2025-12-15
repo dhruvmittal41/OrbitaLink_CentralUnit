@@ -13,6 +13,9 @@ from fastapi import Query
 import uvicorn
 from services.prisma_client import fetch_users
 from services.cache import save, load
+import logging
+from log_utils import setup_logging, event_log
+
 
 # ============================================================
 # CONFIGURATION
@@ -36,6 +39,8 @@ sio = socketio.AsyncServer(
 )
 asgi_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
+logger = setup_logging(sio)
+
 # Enable CORS for dashboard
 app.add_middleware(
     CORSMiddleware,
@@ -54,7 +59,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 SID_TO_FU = {}
 FU_REGISTRY = {}
 field_units = {}
-event_log = []  # merged log from second server.py
 
 
 # ============================================================
@@ -96,16 +100,6 @@ def save_field_units():
     with open(DATA_PATH, "w") as f:
         json.dump(field_units, f, indent=2)
 
-
-def log_event(event_type, data):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    entry = {"time": timestamp, "type": event_type, "data": data}
-    event_log.append(entry)
-    if len(event_log) > LOG_HISTORY_LIMIT:
-        event_log.pop(0)
-    # Push event to dashboard
-    uv = {"type": event_type, "msg": data}
-    return sio.emit("log_update", uv)
 
 # ============================================================
 # ROUTES
@@ -177,7 +171,7 @@ async def api_fu_registry():
 @sio.event
 async def connect(sid, environ):
     print(f"[CONNECT] {sid}")
-    log_event("connect", f"FU connected SID={sid}")
+    logger.info("connect", f"FU connected SID={sid}")
     await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
 
 
@@ -205,7 +199,7 @@ async def handle_field_unit_data(sid, data):
 
     await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
 
-    log_event("fu_log", f"{fu_id} sensor={sensor}")
+    logger.info("fu_log", f"{fu_id} sensor={sensor}")
 
 
 @sio.on("select_satellite")
@@ -221,7 +215,7 @@ async def select_satellite(sid, data):
         "satellite_name": sat_name
     })
 
-    log_event("sat_select", f"{fu_id} selected {sat_name}")
+    logger.info("sat_select", f"{fu_id} selected {sat_name}")
 
 
 @sio.on("az_el_result")
@@ -238,7 +232,7 @@ async def az_el_result(sid, data):
 
     await sio.emit("az_el_command", {"fu_id": fu_id, "az": az, "el": el})
 
-    log_event("az_el", f"{fu_id}: AZ={az} EL={el}")
+    logger.info("az_el", f"{fu_id}: AZ={az} EL={el}")
 
 
 @sio.event
@@ -247,7 +241,7 @@ async def disconnect(sid):
     if fu_id:
         FU_REGISTRY.pop(fu_id, None)
         save_field_units()
-        log_event("disconnect", f"{fu_id} disconnected")
+        logger.info("disconnect", f"{fu_id} disconnected")
 
     await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
 

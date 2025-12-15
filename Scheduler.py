@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""
-scheduler.py — Generate 24-hour satellite pass schedules
-for each active FU location.
-
-Assumes:
-- TLEs exist in data/satellites.json
-- Active FUs exist in data/location_data/active_fus.json
-"""
 
 import json
 import os
