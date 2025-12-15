@@ -1,10 +1,13 @@
 import logging
+import os
 from datetime import datetime
 
 LOG_HISTORY_LIMIT = 500
+LOG_DIR = "data"
+LOG_FILE = os.path.join(LOG_DIR, "app.log")
 
-event_log = []          # in-memory log buffer
-sio_instance = None     # injected from server.py
+event_log = []
+sio_instance = None
 
 
 class SocketIOLogHandler(logging.Handler):
@@ -25,7 +28,6 @@ class SocketIOLogHandler(logging.Handler):
         if len(event_log) > LOG_HISTORY_LIMIT:
             event_log.pop(0)
 
-        # Push to frontend (non-blocking)
         if sio_instance:
             sio_instance.start_background_task(
                 sio_instance.emit,
@@ -38,6 +40,9 @@ def setup_logging(sio):
     global sio_instance
     sio_instance = sio
 
+    # ✅ ENSURE DIRECTORY EXISTS
+    os.makedirs(LOG_DIR, exist_ok=True)
+
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
@@ -49,11 +54,11 @@ def setup_logging(sio):
     ch = logging.StreamHandler()
     ch.setFormatter(formatter)
 
-    # File
-    fh = logging.FileHandler("data/app.log")
+    # File (now safe)
+    fh = logging.FileHandler(LOG_FILE)
     fh.setFormatter(formatter)
 
-    # Socket.IO handler
+    # Socket.IO
     sh = SocketIOLogHandler()
     sh.setFormatter(formatter)
 
