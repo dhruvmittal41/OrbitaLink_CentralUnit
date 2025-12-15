@@ -28,6 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
     socket.on("client_data_update", (data) => {
         const clients = data.clients;
         const container = document.getElementById("client-container");
+        console.log(data)
         if (!container) return;
 
         const seenFUIds = new Set();
