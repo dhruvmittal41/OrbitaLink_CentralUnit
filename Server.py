@@ -15,6 +15,8 @@ from services.prisma_client import fetch_users
 from services.cache import save, load
 import logging
 from log_utils import setup_logging, event_log
+from services.Scheduler import generate_schedule
+import asyncio
 
 
 # ============================================================
@@ -137,6 +139,13 @@ async def api_fu_schedule(fu_id: str):
     with open(ASSIGN_FILE) as f:
         assignments = json.load(f)
     return assignments.get(fu_id, [])
+
+
+@app.post("/api/scheduler/run")
+async def run_scheduler():
+    logger.info("Scheduler triggered from API")
+    await asyncio.to_thread(generate_schedule)
+    return {"status": "scheduler started"}
 
 
 @app.get("/api/satellites")

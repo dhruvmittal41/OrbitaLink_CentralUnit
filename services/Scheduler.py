@@ -160,10 +160,3 @@ def generate_schedule():
         len(full_schedule),
         SCHEDULE_FILE
     )
-
-
-# ==============================
-# ENTRY POINT
-# ==============================
-if __name__ == "__main__":
-    generate_schedule()
