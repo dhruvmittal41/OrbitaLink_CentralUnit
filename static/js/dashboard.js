@@ -59,7 +59,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <h2>📡 Field Unit: ${fu.fu_id}</h2>
         <p>🌡️ Temperature: <span class="temp">${fu.sensor_data?.temperature ?? "--"} °C</span></p>
         <p>💧 Humidity: <span class="hum">${fu.sensor_data?.humidity ?? "--"} %</span></p>
-        <p>📍 Lat: <span class="gps-lat">${fu.location?.longitude ?? "--"}</span>, Lon: <span class="gps-lon">${fu.location?.longitude ?? "--"}</span></p>
+        <p>📍 Lat: <span class="gps-lat">${fu.location?.latitude ?? "--"}</span>, Lon: <span class="gps-lon">${fu.location?.longitude ?? "--"}</span></p>
         <p>🎯 AZ: <span class="az">${fu.az ?? "--"}°</span>, EL: <span class="el">${fu.el ?? "--"}°</span></p>
         <select id="${fu.fu_id}-select" class="satellite-select" data-fu="${fu.fu_id}">
           <option value="" disabled ${selectedSat ? "" : "selected"}>Select satellite</option>
