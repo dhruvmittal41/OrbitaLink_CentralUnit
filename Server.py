@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import socketio
 from fastapi import Query
 import uvicorn
+from services.prisma_client import fetch_users
+from services.cache import save, load
 
 # ============================================================
 # CONFIGURATION
@@ -19,6 +21,7 @@ DATA_PATH = "fu_data.json"
 TLE_FILE = "all_tle_data.json"
 ASSIGN_FILE = "data/assignments.json"
 LOG_HISTORY_LIMIT = 500
+
 
 # ============================================================
 # FASTAPI + SOCKET.IO SETUP
@@ -44,6 +47,7 @@ app.add_middleware(
 # Static dashboard files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+
 # ============================================================
 # IN-MEMORY STATE
 # ============================================================
@@ -51,6 +55,7 @@ SID_TO_FU = {}
 FU_REGISTRY = {}
 field_units = {}
 event_log = []  # merged log from second server.py
+
 
 # ============================================================
 # LOAD FIELD UNIT STATE
@@ -105,6 +110,20 @@ def log_event(event_type, data):
 # ============================================================
 # ROUTES
 # ============================================================
+
+
+@app.on_event("startup")
+async def startup():
+    try:
+        users = await fetch_users()
+        save(users)
+    except Exception:
+        pass
+
+
+@app.get("/users")
+async def users():
+    return load()
 
 
 @app.get("/")
