@@ -17,13 +17,24 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log("✅ Connected to server");
     });
 
-    socket.on("log_update", (message) => {
-        const log = document.getElementById("log-box");
-        if (log) {
-            log.innerHTML += `<div>${message}</div>`;
-            log.scrollTop = log.scrollHeight;
-        }
+    socket.on("log_update", (log) => {
+        const logBox = document.getElementById("log-box");
+        if (!logBox) return;
+
+        const div = document.createElement("div");
+
+        div.textContent = `[${log.time}] ${log.level} | ${log.source}: ${log.message}`;
+
+        // Color coding
+        if (log.level === "ERROR") div.style.color = "red";
+        else if (log.level === "WARNING") div.style.color = "orange";
+        else if (log.level === "DEBUG") div.style.color = "#999";
+        else div.style.color = "#0f0";
+
+        logBox.appendChild(div);
+        logBox.scrollTop = logBox.scrollHeight;
     });
+
 
     socket.on("client_data_update", (data) => {
         const clients = data.clients;
