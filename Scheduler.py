@@ -16,8 +16,8 @@ from skyfield.api import load, wgs84, EarthSatellite
 # ==============================
 # CONFIGURATION
 # ==============================
-SATELLITES_FILE = "data/satellites.json"
-ACTIVE_FUS_FILE = "data/location_data/active_fus.json"
+SATELLITES_FILE = "data/tles.json"
+ACTIVE_FUS_FILE = "data/active_fus.json"
 SCHEDULE_FILE = "data/schedule.json"
 
 IST = timezone(timedelta(hours=5, minutes=30))
