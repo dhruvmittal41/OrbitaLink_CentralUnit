@@ -2,6 +2,10 @@
 document.addEventListener("DOMContentLoaded", () => {
     const socket = io({ autoConnect: false });
 
+    //  <p>🌡️ Temperature: <span class="temp">${fu.sensor_data?.temperature ?? "--"} °C</span></p>
+    // <p>💧 Humidity: <span class="hum">${fu.sensor_data?.humidity ?? "--"} %</span></p>
+    // <p>🎯 AZ: <span class="az">${fu.az ?? "--"}°</span>,
+    //    EL: <span class="el">${fu.el ?? "--"}°</span></p>
     fetch("/api/satellites")
         .then(res => res.json())
         .then(() => {
@@ -51,18 +55,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 : "🛰️ Tracking now: —";
 
             if (existingCard) {
-                existingCard.querySelector(".temp").textContent =
-                    `${fu.sensor_data?.temperature ?? "--"} °C`;
-                existingCard.querySelector(".hum").textContent =
-                    `${fu.sensor_data?.humidity ?? "--"} %`;
+                // existingCard.querySelector(".temp").textContent =
+                //     `${fu.sensor_data?.temperature ?? "--"} °C`;
+                // existingCard.querySelector(".hum").textContent =
+                //     `${fu.sensor_data?.humidity ?? "--"} %`;
                 existingCard.querySelector(".gps-lat").textContent =
                     `${fu.location?.latitude ?? "--"}`;
                 existingCard.querySelector(".gps-lon").textContent =
                     `${fu.location?.longitude ?? "--"}`;
-                existingCard.querySelector(".az").textContent =
-                    `${fu.az ?? "--"}°`;
-                existingCard.querySelector(".el").textContent =
-                    `${fu.el ?? "--"}°`;
+                // existingCard.querySelector(".az").textContent =
+                //     `${fu.az ?? "--"}°`;
+                // existingCard.querySelector(".el").textContent =
+                //     `${fu.el ?? "--"}°`;
                 existingCard.querySelector(".tracking").textContent =
                     trackingText;
                 return;
@@ -75,12 +79,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
             div.innerHTML = `
                 <h2>📡 Field Unit: ${fu.fu_id}</h2>
-                <p>🌡️ Temperature: <span class="temp">${fu.sensor_data?.temperature ?? "--"} °C</span></p>
-                <p>💧 Humidity: <span class="hum">${fu.sensor_data?.humidity ?? "--"} %</span></p>
                 <p>📍 Lat: <span class="gps-lat">${fu.location?.latitude ?? "--"}</span>,
                    Lon: <span class="gps-lon">${fu.location?.longitude ?? "--"}</span></p>
-                <p>🎯 AZ: <span class="az">${fu.az ?? "--"}°</span>,
-                   EL: <span class="el">${fu.el ?? "--"}°</span></p>
                 <p class="tracking">${trackingText}</p>
             `;
 
