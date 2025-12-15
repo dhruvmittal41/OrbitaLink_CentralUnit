@@ -197,7 +197,7 @@ async def handle_field_unit_data(sid, data):
         "satellite": field_units.get(fu_id, {}).get("satellite"),
         "az": field_units.get(fu_id, {}).get("az"),
         "el": field_units.get(fu_id, {}).get("el"),
-        "gps": field_units.get(fu_id, {}).get("gps")
+        "location": field_units.get(fu_id, {}).get("location")
     }
 
     field_units.setdefault(fu_id, {})["sensor_data"] = sensor
