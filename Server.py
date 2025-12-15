@@ -199,7 +199,7 @@ async def handle_field_unit_data(sid, data):
 
     await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
 
-    logger.info("fu_log", f"{fu_id} sensor={sensor}")
+    logger.info("fu_log | %s sensor=%s", fu_id, sensor)
 
 
 @sio.on("select_satellite")
