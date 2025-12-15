@@ -2,8 +2,14 @@
 
 import json
 import os
+import logging
 from datetime import datetime, timedelta, timezone
 from skyfield.api import load, wgs84, EarthSatellite
+
+# ==============================
+# LOGGER
+# ==============================
+logger = logging.getLogger("CU.scheduler")
 
 # ==============================
 # CONFIGURATION
@@ -59,11 +65,15 @@ def find_passes(satellite, location, ts, start_time, hours):
 
 
 def generate_schedule():
+    logger.info("Scheduler started")
+
     if not os.path.exists(SATELLITES_FILE):
-        raise FileNotFoundError(f"Missing {SATELLITES_FILE}")
+        logger.error("Missing satellites file: %s", SATELLITES_FILE)
+        raise FileNotFoundError(SATELLITES_FILE)
 
     if not os.path.exists(ACTIVE_FUS_FILE):
-        raise FileNotFoundError(f"Missing {ACTIVE_FUS_FILE}")
+        logger.error("Missing active FUs file: %s", ACTIVE_FUS_FILE)
+        raise FileNotFoundError(ACTIVE_FUS_FILE)
 
     with open(SATELLITES_FILE, "r") as f:
         satellites_data = json.load(f)
@@ -71,13 +81,13 @@ def generate_schedule():
     with open(ACTIVE_FUS_FILE, "r") as f:
         fus_data = json.load(f)
 
+    logger.info("Loaded %d satellites", len(satellites_data))
+    logger.info("Detected %d active FUs", len(fus_data))
+
     ts = load.timescale()
     now_utc = datetime.now(timezone.utc)
 
     full_schedule = {}
-
-    print(f"\n[INFO] Active FUs detected: {len(fus_data)}")
-    print(f"[INFO] Satellites loaded: {len(satellites_data)}\n")
 
     for fu_id, fu in fus_data.items():
         loc = fu.get("location", {})
@@ -85,10 +95,10 @@ def generate_schedule():
         lon = loc.get("longitude")
 
         if lat is None or lon is None:
-            print(f"[WARN] FU {fu_id} missing location, skipping")
+            logger.warning("FU %s missing location, skipping", fu_id)
             continue
 
-        print(f"[INFO] Scheduling for FU {fu_id} @ ({lat}, {lon})")
+        logger.info("Scheduling FU %s at lat=%s lon=%s", fu_id, lat, lon)
 
         location = wgs84.latlon(lat, lon, 0.0)
         fu_schedule = []
@@ -109,6 +119,14 @@ def generate_schedule():
                 hours=SCHEDULE_HOURS
             )
 
+            logger.debug(
+                "FU %s | %s (%s): %d passes",
+                fu_id,
+                sat["name"],
+                norad_id,
+                len(passes)
+            )
+
             for p in passes:
                 p.update({
                     "fu_id": fu_id,
@@ -118,24 +136,30 @@ def generate_schedule():
 
             fu_schedule.extend(passes)
 
+        fu_schedule.sort(key=lambda x: x["start_time"])
+
         full_schedule[fu_id] = {
             "fu_id": fu_id,
             "location": loc,
             "generated_at": datetime.now(IST).isoformat(),
-            "schedule": sorted(
-                fu_schedule,
-                key=lambda x: x["start_time"]
-            )
+            "schedule": fu_schedule
         }
 
-        print(f"[SCHEDULE] FU {fu_id}: {len(fu_schedule)} passes")
+        logger.info(
+            "FU %s scheduling complete: %d total passes",
+            fu_id,
+            len(fu_schedule)
+        )
 
     os.makedirs(os.path.dirname(SCHEDULE_FILE), exist_ok=True)
     with open(SCHEDULE_FILE, "w") as f:
         json.dump(full_schedule, f, indent=4)
 
-    print(f"\n✅ Schedule generated for {len(full_schedule)} FUs")
-    print(f"📁 Saved to {SCHEDULE_FILE}")
+    logger.info(
+        "Scheduler finished: %d FUs scheduled, output=%s",
+        len(full_schedule),
+        SCHEDULE_FILE
+    )
 
 
 # ==============================

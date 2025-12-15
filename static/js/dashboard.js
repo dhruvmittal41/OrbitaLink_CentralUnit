@@ -17,7 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log("✅ Connected to server");
     });
 
-    socket.on("log", (message) => {
+    socket.on("log_update", (message) => {
         const log = document.getElementById("log-box");
         if (log) {
             log.innerHTML += `<div>${message}</div>`;
