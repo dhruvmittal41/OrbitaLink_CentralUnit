@@ -197,7 +197,7 @@ async def handle_field_unit_data(sid, data):
         "fu_id": fu_id,
         "sensor_data": sensor,
         "timestamp": time.time(),
-        "satellite": field_units.get(fu_id, {}).get("satellite"),
+        "satellite": data.get("satellite") or field_units.get(fu_id, {}).get("satellite"),
         "az": field_units.get(fu_id, {}).get("az"),
         "el": field_units.get(fu_id, {}).get("el"),
         "location": data.get("location")
