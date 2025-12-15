@@ -1,63 +1,104 @@
 #!/usr/bin/env python3
 """
-update_tles.py — Fetch and update ALL active satellite TLEs from Celestrak.
-
-Runs periodically (e.g. once every 24 hours via APScheduler).
+update_tles.py — Fetch and update TLEs for specific NORAD IDs
 """
 
 import os
 import json
 import requests
+from itertools import islice
 
 # ==============================
 # CONFIGURATION
 # ==============================
-SATELLITES_FILE = "data/satellites.json"
+INPUT_FILE = "data/users_cache.json"
+OUTPUT_FILE = "data/tles.json"
 
-# Source of TLE data
-# (You can change this to 'https://celestrak.org/NORAD/elements/gp.php?GROUP=all&FORMAT=tle'
-# if you want every single object, not just active ones.)
-TLE_SOURCE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle"
+CELESTRAK_URL = "https://celestrak.org/NORAD/elements/gp.php"
+BATCH_SIZE = 50  # Celestrak is happier with batches
 
 # ==============================
-# FETCH ALL TLEs
+# HELPERS
 # ==============================
 
 
-def fetch_all_tles():
-    """Fetch all active satellite TLEs from Celestrak and store locally."""
-    os.makedirs(os.path.dirname(SATELLITES_FILE), exist_ok=True)
+def chunked(iterable, size):
+    """Yield successive chunks from iterable."""
+    it = iter(iterable)
+    while True:
+        chunk = list(islice(it, size))
+        if not chunk:
+            return
+        yield chunk
 
-    print(f"[INFO] Fetching TLE data from {TLE_SOURCE_URL} ...")
-    try:
-        response = requests.get(TLE_SOURCE_URL, timeout=20)
+
+def load_norad_ids(path):
+    """Extract unique NORAD IDs from your JSON structure."""
+    with open(path, "r") as f:
+        data = json.load(f)
+
+    norad_ids = set()
+    for entry in data:
+        norad_ids.update(entry.get("satids", []))
+
+    return sorted(norad_ids)
+
+
+def fetch_tles_for_ids(norad_ids):
+    """Fetch TLEs one NORAD ID at a time (most reliable)."""
+    tles = {}
+
+    for norad_id in norad_ids:
+        url = f"{CELESTRAK_URL}?CATNR={norad_id}"
+
+        print(f"[INFO] Fetching TLE for NORAD {norad_id}")
+        response = requests.get(url, timeout=20)
         response.raise_for_status()
-        text = response.text.strip()
-    except requests.RequestException as e:
-        print(f"[ERROR] Failed to fetch TLEs: {e}")
-        return
 
-    lines = text.splitlines()
-    satellites = {}
-    count = 0
+        lines = [l.rstrip() for l in response.text.splitlines() if l.strip()]
 
-    # Parse TLEs (3 lines per satellite)
-    for i in range(0, len(lines), 3):
-        if i + 2 >= len(lines):
-            break
-        name = lines[i].strip()
-        line1 = lines[i + 1].strip()
-        line2 = lines[i + 2].strip()
-        if line1.startswith("1 ") and line2.startswith("2 "):
-            satellites[name] = {"line1": line1, "line2": line2}
-            count += 1
+        if len(lines) < 3:
+            print(f"[WARN] No TLE found for NORAD {norad_id}")
+            continue
 
-    # Save to JSON
-    with open(SATELLITES_FILE, "w") as f:
-        json.dump(satellites, f, indent=2)
+        # Expected format:
+        # NAME
+        # 1 xxxxx
+        # 2 xxxxx
+        name = lines[0]
+        line1 = lines[1]
+        line2 = lines[2]
 
-    print(f"\n✅ Saved {count} satellites to {SATELLITES_FILE}")
+        if not (line1.startswith("1 ") and line2.startswith("2 ")):
+            print(f"[WARN] Invalid TLE format for NORAD {norad_id}")
+            continue
+
+        tles[norad_id] = {
+            "name": name,
+            "line1": line1,
+            "line2": line2
+        }
+
+    return tles
+
+
+# ==============================
+# MAIN
+# ==============================
+
+def update_tles():
+    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
+
+    norad_ids = load_norad_ids(INPUT_FILE)
+    print(f"[INFO] Found {len(norad_ids)} unique NORAD IDs")
+
+    tles = fetch_tles_for_ids(norad_ids)
+
+    with open(OUTPUT_FILE, "w") as f:
+        json.dump(tles, f, indent=2)
+
+    print(f"\n✅ Saved {len(tles)} TLEs to {OUTPUT_FILE}")
 
 
 if __name__ == "__main__":
-    fetch_all_tles()
+    update_tles()

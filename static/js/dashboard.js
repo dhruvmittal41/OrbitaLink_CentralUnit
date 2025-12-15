@@ -40,8 +40,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 // Update existing values
                 existingCard.querySelector(".temp").textContent = `${fu.sensor_data?.temperature ?? "--"} °C`;
                 existingCard.querySelector(".hum").textContent = `${fu.sensor_data?.humidity ?? "--"} %`;
-                existingCard.querySelector(".gps-lat").textContent = `${fu.gps?.lat ?? "--"}`;
-                existingCard.querySelector(".gps-lon").textContent = `${fu.gps?.lon ?? "--"}`;
+                existingCard.querySelector(".gps-lat").textContent = `${fu.location?.latitude ?? "--"}`;
+                existingCard.querySelector(".gps-lon").textContent = `${fu.location?.longitude ?? "--"}`;
                 existingCard.querySelector(".az").textContent = `${fu.az ?? "--"}°`;
                 existingCard.querySelector(".el").textContent = `${fu.el ?? "--"}°`;
                 return;
