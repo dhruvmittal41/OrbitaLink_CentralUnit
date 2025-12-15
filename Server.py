@@ -169,9 +169,9 @@ async def api_fu_registry():
 
 
 @sio.event
-async def connect(sid, environ):
+async def connect(sid, environ, auth=None):
     print(f"[CONNECT] {sid}")
-    logger.info("connect", f"FU connected SID={sid}")
+    logger.info("connect: FU connected SID=%s", sid)
     await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
 
 
