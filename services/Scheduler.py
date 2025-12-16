@@ -9,7 +9,8 @@ from skyfield.api import load, wgs84, EarthSatellite
 # ==============================
 # LOGGER
 # ==============================
-logger = logging.getLogger("CU.scheduler")
+from log_utils import get_logger
+logger = get_logger("scheduler")
 
 # ==============================
 # CONFIGURATION

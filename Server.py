@@ -24,7 +24,7 @@ import asyncio
 # ============================================================
 DATA_PATH = "fu_data.json"
 TLE_FILE = "all_tle_data.json"
-ASSIGN_FILE = "data/assignments.json"
+ASSIGN_FILE = "data/schedule.json"
 LOG_HISTORY_LIMIT = 500
 
 
