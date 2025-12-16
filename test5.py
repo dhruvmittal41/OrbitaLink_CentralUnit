@@ -91,7 +91,7 @@ def register_fu(fu_id):
     public_ip = get_public_ip()
 
     payload = {
-        "fu_id": "FU 001",
+        "fu_id": "FU 005",
         "ip": public_ip,
         "occupied_slots": [],
         "satellite": "ICEYE-X40"

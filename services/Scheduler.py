@@ -20,7 +20,7 @@ SCHEDULE_FILE = "data/schedule.json"
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
-MIN_ELEVATION_DEG = 10.0
+MIN_ELEVATION_DEG = 0.0
 SCHEDULE_HOURS = 24
 
 # ==============================
