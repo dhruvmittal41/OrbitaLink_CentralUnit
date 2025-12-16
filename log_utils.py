@@ -8,6 +8,7 @@ LOG_FILE = os.path.join(LOG_DIR, "app.log")
 
 event_log = []
 sio_instance = None
+_root_configured = False
 
 
 class SocketIOLogHandler(logging.Handler):
@@ -37,34 +38,53 @@ class SocketIOLogHandler(logging.Handler):
 
 
 def setup_logging(sio):
-    global sio_instance
+    """
+    Configure root logger ONCE.
+    All module loggers will inherit these handlers.
+    """
+    global sio_instance, _root_configured
     sio_instance = sio
 
-    # ✅ ENSURE DIRECTORY EXISTS
+    if _root_configured:
+        return get_logger("CU")
+
     os.makedirs(LOG_DIR, exist_ok=True)
 
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
 
     formatter = logging.Formatter(
         "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
     )
 
-    # Console
+    # --- Console ---
     ch = logging.StreamHandler()
     ch.setFormatter(formatter)
 
-    # File (now safe)
+    # --- File ---
     fh = logging.FileHandler(LOG_FILE)
     fh.setFormatter(formatter)
 
-    # Socket.IO
+    # --- Socket.IO ---
     sh = SocketIOLogHandler()
     sh.setFormatter(formatter)
 
-    logger.handlers.clear()
-    logger.addHandler(ch)
-    logger.addHandler(fh)
-    logger.addHandler(sh)
+    root.handlers.clear()
+    root.addHandler(ch)
+    root.addHandler(fh)
+    root.addHandler(sh)
 
-    return logging.getLogger("CU")
+    _root_configured = True
+    return get_logger("CU")
+
+
+def get_logger(name: str) -> logging.Logger:
+    """
+    Return a namespaced logger under CU.*
+    Example:
+        get_logger("scheduler") -> CU.scheduler
+    """
+    if not name.startswith("CU"):
+        name = f"CU.{name}"
+
+    return logging.getLogger(name)
