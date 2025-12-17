@@ -14,7 +14,7 @@ import uvicorn
 from services.prisma_client import fetch_users
 from services.cache import save, load
 from log_utils import setup_logging, event_log
-from Central_Unit.Scheduler.Schedule_Generator import generate_schedule
+from Scheduler.Schedule_Generator import generate_schedule
 import asyncio
 
 
