@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime
+import threading
 
 LOG_HISTORY_LIMIT = 500
 LOG_DIR = "data"
@@ -29,7 +30,11 @@ class SocketIOLogHandler(logging.Handler):
         if len(event_log) > LOG_HISTORY_LIMIT:
             event_log.pop(0)
 
-        if sio_instance:
+        # 🔒 ABSOLUTE SAFETY: never emit from non-main thread
+        if (
+            sio_instance
+            and threading.current_thread() is threading.main_thread()
+        ):
             sio_instance.start_background_task(
                 sio_instance.emit,
                 "log_update",
