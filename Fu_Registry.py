@@ -19,7 +19,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "..", "data")
 DATA_DIR = os.path.abspath(DATA_DIR)
 REGISTRY_FILE = os.path.join(DATA_DIR, "active_fus.json")
-SERVER_API = "http://127.0.0.1:8080/api/fu_registry"
+SERVER_API = "https://orbitalink-centralunit.onrender.com/api/fu_registry"
 CHECK_INTERVAL = 30
 TIMEOUT_MINUTES = 5
 
