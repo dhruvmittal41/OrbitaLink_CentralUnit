@@ -95,6 +95,33 @@ def save_field_units():
         json.dump(field_units, f, indent=2)
 
 
+def write_active_fus_from_server():
+    data = {}
+
+    for fu_id, fu in FU_REGISTRY.items():
+        loc = fu.get("location")
+        if not loc:
+            continue
+
+        # normalize here too
+        latitude = loc.get("latitude") or loc.get("lat")
+        longitude = loc.get("longitude") or loc.get("lon")
+
+        if latitude is None or longitude is None:
+            continue
+
+        data[fu_id] = {
+            **fu,
+            "location": {
+                "latitude": latitude,
+                "longitude": longitude
+            }
+        }
+
+    with open(os.path.join(DATA_DIR, "active_fus.json"), "w") as f:
+        json.dump(data, f, indent=2)
+
+
 # ============================================================
 # ROUTES
 # ============================================================
@@ -143,6 +170,7 @@ async def run_scheduler(reason: str):
     SCHEDULER_STATE["running"] = True
 
     try:
+        write_active_fus_from_server()
         await asyncio.to_thread(generate_schedule)
         SCHEDULER_STATE["last_run"] = time.time()
         logger.info("Scheduler finished successfully")
