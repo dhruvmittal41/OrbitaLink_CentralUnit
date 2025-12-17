@@ -1,68 +1,20 @@
-#!/usr/bin/env python3
 
 import json
 import os
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 from skyfield.api import load, wgs84, EarthSatellite
+from Pass_Generator import find_passes
+from Central_Unit.Assigner import assign_passes
 
-# ==============================
-# LOGGER
-# ==============================
 from log_utils import get_logger
 logger = get_logger("scheduler")
-
-# ==============================
-# CONFIGURATION
-# ==============================
 SATELLITES_FILE = "data/tles.json"
 ACTIVE_FUS_FILE = "data/active_fus.json"
 SCHEDULE_FILE = "data/schedule.json"
-
-IST = timezone(timedelta(hours=5, minutes=30))
-
-MIN_ELEVATION_DEG = 0.0
 SCHEDULE_HOURS = 24
 
-# ==============================
-# PASS COMPUTATION
-# ==============================
-
-
-def find_passes(satellite, location, ts, start_time, hours):
-    """Return all visible passes within time window."""
-    t0 = ts.from_datetime(start_time)
-    t1 = ts.from_datetime(start_time + timedelta(hours=hours))
-
-    times, events = satellite.find_events(
-        location, t0, t1, altitude_degrees=MIN_ELEVATION_DEG
-    )
-
-    passes = []
-    current_pass = None
-
-    for ti, event in zip(times, events):
-        t_local = ti.utc_datetime().astimezone(IST)
-
-        if event == 0:  # Rise
-            current_pass = {
-                "start_time": t_local.isoformat()
-            }
-
-        elif event == 1 and current_pass is not None:  # Culmination
-            alt, _, _ = (satellite - location).at(ti).altaz()
-            current_pass["max_elevation_deg"] = round(alt.degrees, 2)
-
-        elif event == 2 and current_pass is not None:  # Set
-            current_pass["end_time"] = t_local.isoformat()
-            passes.append(current_pass)
-            current_pass = None
-
-    return passes
-
-# ==============================
-# SCHEDULE GENERATION
-# ==============================
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def generate_schedule():
@@ -161,3 +113,7 @@ def generate_schedule():
         len(full_schedule),
         SCHEDULE_FILE
     )
+
+    logger.info("Running assignment phase")
+    assign_passes()
+    logger.info("Assignment phase completed")

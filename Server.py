@@ -13,9 +13,8 @@ from fastapi import Query
 import uvicorn
 from services.prisma_client import fetch_users
 from services.cache import save, load
-import logging
 from log_utils import setup_logging, event_log
-from services.Scheduler import generate_schedule
+from Central_Unit.Scheduler.Schedule_Generator import generate_schedule
 import asyncio
 
 
@@ -26,7 +25,10 @@ DATA_PATH = "fu_data.json"
 TLE_FILE = "all_tle_data.json"
 ASSIGN_FILE = "data/schedule.json"
 LOG_HISTORY_LIMIT = 500
-
+SCHEDULER_STATE = {
+    "running": False,
+    "last_run": None
+}
 
 # ============================================================
 # FASTAPI + SOCKET.IO SETUP
@@ -82,21 +84,6 @@ if os.path.exists(DATA_PATH):
 
     print(f"[BOOT] Restored {len(field_units)} Field Units")
 
-# ============================================================
-# LOAD TLE CACHE
-# ============================================================
-TLE_CACHE = {}
-if os.path.exists(TLE_FILE):
-    with open(TLE_FILE) as f:
-        TLE_CACHE = json.load(f)
-    print(f"[BOOT] Loaded {len(TLE_CACHE)} satellites")
-else:
-    print(f"[ERROR] Missing TLE file: {TLE_FILE}")
-
-# ============================================================
-# UTIL
-# ============================================================
-
 
 def save_field_units():
     with open(DATA_PATH, "w") as f:
@@ -107,7 +94,6 @@ def save_field_units():
 # ROUTES
 # ============================================================
 
-
 @app.on_event("startup")
 async def startup():
     try:
@@ -115,6 +101,7 @@ async def startup():
         save(users)
     except Exception:
         pass
+    asyncio.create_task(run_scheduler("startup"))
 
 
 @app.get("/users")
@@ -142,23 +129,22 @@ async def api_fu_schedule(fu_id: str):
 
 
 @app.post("/api/scheduler/run")
-async def run_scheduler():
-    logger.info("Scheduler triggered from API")
-    await asyncio.to_thread(generate_schedule)
-    return {"status": "scheduler started"}
+async def run_scheduler(reason: str):
+    if SCHEDULER_STATE["running"]:
+        logger.warning("Scheduler already running, skipping (%s)", reason)
+        return
 
+    logger.info("Scheduler starting (%s)", reason)
+    SCHEDULER_STATE["running"] = True
 
-@app.get("/api/satellites")
-async def api_sat_list():
-    return list(TLE_CACHE.keys())
-
-
-@app.get("/api/tle_by_name")
-async def api_tle_by_name(name: str = Query(...)):
-    if name not in TLE_CACHE:
-        raise HTTPException(404, f"TLE not found: {name}")
-    x = TLE_CACHE[name]
-    return {"name": name, "tle_line1": x["line1"], "tle_line2": x["line2"]}
+    try:
+        await asyncio.to_thread(generate_schedule)
+        SCHEDULER_STATE["last_run"] = time.time()
+        logger.info("Scheduler finished successfully")
+    except Exception:
+        logger.exception("Scheduler failed")
+    finally:
+        SCHEDULER_STATE["running"] = False
 
 
 @app.post("/api/fu")
@@ -180,7 +166,30 @@ async def api_fu_registry():
 @sio.event
 async def connect(sid, environ, auth=None):
     print(f"[CONNECT] {sid}")
-    logger.info("connect: FU connected SID=%s", sid)
+    logger.info("connect: FU connected")
+    if (
+        not SCHEDULER_STATE["last_run"]
+        or time.time() - SCHEDULER_STATE["last_run"] > 86400
+    ):
+        asyncio.create_task(run_scheduler("fu_connect"))
+
+    def load_assignments():
+        if not os.path.exists(ASSIGN_FILE):
+            return {}
+        with open(ASSIGN_FILE) as f:
+            return json.load(f)
+
+    assignments = load_assignments()
+    if fu_id in assignments:
+        await sio.emit(
+            "fu_schedule",
+            {
+                "fu_id": fu_id,
+                "schedule": assignments[fu_id]
+            },
+            to=sid
+        )
+
     await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
 
 
@@ -197,7 +206,7 @@ async def handle_field_unit_data(sid, data):
         "fu_id": fu_id,
         "sensor_data": sensor,
         "timestamp": time.time(),
-        "satellite": data.get("satellite") or field_units.get(fu_id, {}).get("satellite"),
+        "satellite": data.get("satellite"),
         "az": field_units.get(fu_id, {}).get("az"),
         "el": field_units.get(fu_id, {}).get("el"),
         "location": data.get("location")
@@ -208,23 +217,7 @@ async def handle_field_unit_data(sid, data):
 
     await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
 
-    logger.info("fu_log | %s sensor=%s", fu_id, sensor)
-
-
-@sio.on("select_satellite")
-async def select_satellite(sid, data):
-    fu_id = data["fu_id"]
-    sat_name = data["satellite_name"]
-
-    field_units.setdefault(fu_id, {})["satellite"] = sat_name
-    FU_REGISTRY.setdefault(fu_id, {})["satellite"] = sat_name
-
-    await sio.emit("az_el_update", {
-        "fu_id": fu_id,
-        "satellite_name": sat_name
-    })
-
-    logger.info("sat_select", f"{fu_id} selected {sat_name}")
+    logger.info("fu_log | %s", fu_id)
 
 
 @sio.on("az_el_result")
@@ -254,9 +247,7 @@ async def disconnect(sid):
 
     await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
 
-# ============================================================
-# RUN SERVER
-# ============================================================
+
 if __name__ == "__main__":
     os.makedirs("data", exist_ok=True)
     uvicorn.run(asgi_app, host="0.0.0.0", port=8080)
