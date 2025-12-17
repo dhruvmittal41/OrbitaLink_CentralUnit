@@ -141,8 +141,8 @@ async def run_scheduler(reason: str):
         await asyncio.to_thread(generate_schedule)
         SCHEDULER_STATE["last_run"] = time.time()
         logger.info("Scheduler finished successfully")
-    except Exception:
-        logger.exception("Scheduler failed")
+    except Exception as e:
+        logger.error("Scheduler failed with exception: %s", e, exc_info=True)
     finally:
         SCHEDULER_STATE["running"] = False
 
