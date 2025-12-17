@@ -35,13 +35,6 @@ uvicorn.log
 # -----------------------------
 # Local data files (DO NOT UPLOAD)
 # -----------------------------
-fu_data.json
-all_tle_data.json
-data/assignments.json
-
-# In case your app creates any other runtime data files:
-data/*.json
-!data/.gitkeep
 
 # -----------------------------
 # Redis / Cache
