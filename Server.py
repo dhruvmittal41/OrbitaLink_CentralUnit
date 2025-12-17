@@ -163,6 +163,13 @@ async def api_fu_registry():
 # ============================================================
 
 
+def load_assignments():
+    if not os.path.exists(ASSIGN_FILE):
+        return {}
+    with open(ASSIGN_FILE) as f:
+        return json.load(f)
+
+
 @sio.event
 async def connect(sid, environ, auth=None):
     print(f"[CONNECT] {sid}")
@@ -172,23 +179,6 @@ async def connect(sid, environ, auth=None):
         or time.time() - SCHEDULER_STATE["last_run"] > 86400
     ):
         asyncio.create_task(run_scheduler("fu_connect"))
-
-    def load_assignments():
-        if not os.path.exists(ASSIGN_FILE):
-            return {}
-        with open(ASSIGN_FILE) as f:
-            return json.load(f)
-
-    assignments = load_assignments()
-    if fu_id in assignments:
-        await sio.emit(
-            "fu_schedule",
-            {
-                "fu_id": fu_id,
-                "schedule": assignments[fu_id]
-            },
-            to=sid
-        )
 
     await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
 
@@ -218,6 +208,17 @@ async def handle_field_unit_data(sid, data):
     await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
 
     logger.info("fu_log | %s", fu_id)
+
+    assignments = load_assignments()
+    if fu_id in assignments:
+        await sio.emit(
+            "fu_schedule",
+            {
+                "fu_id": fu_id,
+                "schedule": assignments[fu_id]
+            },
+            to=sid
+        )
 
 
 @sio.on("az_el_result")
