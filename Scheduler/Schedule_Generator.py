@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from skyfield.api import load, wgs84, EarthSatellite
 from Scheduler.Pass_Generator import find_passes
-from Central_Unit.Assigner import assign_passes
+from Assigner import assign_passes
 
 from log_utils import get_logger
 logger = get_logger("scheduler")
