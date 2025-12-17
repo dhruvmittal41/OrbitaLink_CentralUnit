@@ -21,9 +21,14 @@ import asyncio
 # ============================================================
 # CONFIGURATION
 # ============================================================
-DATA_PATH = "fu_data.json"
-TLE_FILE = "all_tle_data.json"
-ASSIGN_FILE = "data/schedule.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+DATA_DIR = os.path.join(BASE_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+DATA_PATH = os.path.join(BASE_DIR, "fu_data.json")
+TLE_FILE = os.path.join(DATA_DIR, "tles.json")
+ASSIGN_FILE = os.path.join(DATA_DIR, "schedule.json")
 LOG_HISTORY_LIMIT = 500
 SCHEDULER_STATE = {
     "running": False,

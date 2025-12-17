@@ -1,4 +1,5 @@
 
+from log_utils import get_logger
 import json
 import os
 import logging
@@ -7,11 +8,17 @@ from skyfield.api import load, wgs84, EarthSatellite
 from Scheduler.Pass_Generator import find_passes
 from Assigner import assign_passes
 
-from log_utils import get_logger
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "..", "data")
+DATA_DIR = os.path.abspath(DATA_DIR)
+
+SATELLITES_FILE = os.path.join(DATA_DIR, "tles.json")
+ACTIVE_FUS_FILE = os.path.join(DATA_DIR, "active_fus.json")
+SCHEDULE_FILE = os.path.join(DATA_DIR, "schedule.json")
+
+
 logger = get_logger("scheduler")
-SATELLITES_FILE = "data/tles.json"
-ACTIVE_FUS_FILE = "data/active_fus.json"
-SCHEDULE_FILE = "data/schedule.json"
 SCHEDULE_HOURS = 24
 
 IST = timezone(timedelta(hours=5, minutes=30))
