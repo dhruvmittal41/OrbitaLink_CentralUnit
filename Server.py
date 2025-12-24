@@ -3,7 +3,8 @@ import json
 import os
 import time
 import asyncio
-from datetime import datetime
+import uuid
+from typing import Dict
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -18,6 +19,8 @@ from services.cache import save, load
 from log_utils import setup_logging, event_log
 from Scheduler.Schedule_Generator import generate_schedule
 
+from datetime import datetime
+
 
 # ============================================================
 # CONFIGURATION
@@ -27,10 +30,11 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
-DATA_PATH = os.path.join(BASE_DIR, "fu_data.json")
 ASSIGN_FILE = os.path.join(DATA_DIR, "schedule.json")
+ACTIVE_FU_FILE = os.path.join(DATA_DIR, "active_fus.json")
 
 LOG_HISTORY_LIMIT = 500
+FU_TIMEOUT_SEC = 30
 
 SCHEDULER_STATE = {
     "running": False,
@@ -64,52 +68,47 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # ============================================================
-# IN-MEMORY STATE
+# IN-MEMORY STATE (AUTHORITATIVE)
 # ============================================================
-SID_TO_FU = {}
-FU_REGISTRY = {}
-FIELD_UNITS = {}
+SID_TO_FU: Dict[str, str] = {}
 
-# Cached schedules (key = fu_id)
-SCHEDULE_CACHE = {}
+FU_REGISTRY: Dict[str, dict] = {
+    # fu_id: {
+    #   fu_id, state, health, mode,
+    #   az, el, location,
+    #   last_seen, current_pass
+    # }
+}
+
+SCHEDULE_CACHE: Dict[str, list] = {}
 
 
 # ============================================================
-# BOOTSTRAP STATE
+# ACTIVITY EXECUTION STATE
 # ============================================================
-if os.path.exists(DATA_PATH):
-    with open(DATA_PATH) as f:
-        FIELD_UNITS.update(json.load(f))
 
-    for fu_id, data in FIELD_UNITS.items():
-        FU_REGISTRY[fu_id] = {
-            "fu_id": fu_id,
-            "sensor_data": data.get("sensor_data", {}),
-            "timestamp": time.time(),
-            "satellite": data.get("satellite"),
-            "az": data.get("az"),
-            "el": data.get("el"),
-            "location": data.get("location"),
-        }
-
-    print(f"[BOOT] Restored {len(FIELD_UNITS)} Field Units")
-
-if os.path.exists(ASSIGN_FILE):
-    with open(ASSIGN_FILE) as f:
-        SCHEDULE_CACHE = json.load(f)
+ACTIVITY_STATE: Dict[str, dict] = {
+    # activity_id: {
+    #   activity, fu_id, state, started_at
+    # }
+}
 
 
 # ============================================================
 # HELPERS
 # ============================================================
-def save_field_units():
-    with open(DATA_PATH, "w") as f:
-        json.dump(FIELD_UNITS, f, indent=2)
+def load_assignments():
+    global SCHEDULE_CACHE
+    if os.path.exists(ASSIGN_FILE):
+        with open(ASSIGN_FILE) as f:
+            SCHEDULE_CACHE = json.load(f)
+    else:
+        SCHEDULE_CACHE = {}
+    return SCHEDULE_CACHE
 
 
 def write_active_fus_for_scheduler():
     active = {}
-
     for fu_id, fu in FU_REGISTRY.items():
         loc = fu.get("location")
         if not loc:
@@ -126,24 +125,29 @@ def write_active_fus_for_scheduler():
             "location": {"latitude": lat, "longitude": lon},
         }
 
-    with open(os.path.join(DATA_DIR, "active_fus.json"), "w") as f:
+    with open(ACTIVE_FU_FILE, "w") as f:
         json.dump(active, f, indent=2)
 
 
-def load_assignments():
-    global SCHEDULE_CACHE
-    if not os.path.exists(ASSIGN_FILE):
-        SCHEDULE_CACHE = {}
-        return {}
-
-    with open(ASSIGN_FILE) as f:
-        SCHEDULE_CACHE = json.load(f)
-    return SCHEDULE_CACHE
-
-
 async def push_all_schedules():
-    """Push schedules to all connected clients"""
     await sio.emit("fu_schedule_update", SCHEDULE_CACHE)
+
+
+def mark_fu_offline():
+    now = time.time()
+    changed = False
+
+    for fu in FU_REGISTRY.values():
+        if fu["state"] != "OFFLINE" and now - fu["last_seen"] > FU_TIMEOUT_SEC:
+            fu["state"] = "OFFLINE"
+            fu["health"] = "ERROR"
+            changed = True
+
+    return changed
+
+
+def iso_to_epoch(ts: str) -> float:
+    return datetime.fromisoformat(ts).timestamp()
 
 
 # ============================================================
@@ -157,7 +161,10 @@ async def startup():
     except Exception:
         pass
 
+    load_assignments()
     asyncio.create_task(run_scheduler("startup"))
+    asyncio.create_task(fu_watchdog())
+    asyncio.create_task(activity_executor())
 
 
 @app.get("/")
@@ -165,14 +172,14 @@ async def dashboard():
     return FileResponse("static/dashboard.html")
 
 
-@app.get("/users")
-async def users():
-    return load()
-
-
 @app.get("/api/logs")
 async def api_logs():
     return JSONResponse(event_log[-LOG_HISTORY_LIMIT:])
+
+
+@app.get("/api/fu_registry")
+async def api_fu_registry():
+    return JSONResponse(list(FU_REGISTRY.values()))
 
 
 @app.get("/api/scheduler/status")
@@ -183,7 +190,6 @@ async def scheduler_status():
 @app.post("/api/scheduler/run")
 async def run_scheduler(reason: str):
     if SCHEDULER_STATE["running"]:
-        logger.warning("Scheduler already running (%s)", reason)
         return {"status": "busy"}
 
     logger.info("Scheduler starting (%s)", reason)
@@ -197,7 +203,7 @@ async def run_scheduler(reason: str):
         SCHEDULER_STATE["last_run"] = time.time()
         await push_all_schedules()
 
-        logger.info("Scheduler completed successfully")
+        logger.info("Scheduler completed")
         return {"status": "ok"}
 
     except Exception as e:
@@ -208,23 +214,6 @@ async def run_scheduler(reason: str):
         SCHEDULER_STATE["running"] = False
 
 
-@app.get("/api/fu/{fu_id}/schedule")
-async def get_fu_schedule(fu_id: str):
-    return SCHEDULE_CACHE.get(fu_id, [])
-
-
-@app.get("/api/fu_registry")
-async def api_fu_registry():
-    return JSONResponse(FU_REGISTRY)
-
-
-@app.post("/api/fu")
-async def api_fu_post(request: Request):
-    data = await request.json()
-    await handle_field_unit_data(None, data)
-    return {"status": "ok"}
-
-
 # ============================================================
 # SOCKET.IO EVENTS
 # ============================================================
@@ -232,39 +221,30 @@ async def api_fu_post(request: Request):
 async def connect(sid, environ, auth=None):
     logger.info("connect | sid=%s", sid)
 
-    if (
-        not SCHEDULER_STATE["last_run"]
-        or time.time() - SCHEDULER_STATE["last_run"] > 86400
-    ):
-        asyncio.create_task(run_scheduler("fu_connect"))
-
-    await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
+    await sio.emit("fu_registry_update", list(FU_REGISTRY.values()), to=sid)
     await sio.emit("fu_schedule_update", SCHEDULE_CACHE, to=sid)
 
 
-@sio.on("field_unit_data")
-async def handle_field_unit_data(sid, data):
-    fu_id = data.get("fu_id")
-    if not fu_id:
-        return
+@sio.on("fu_status")
+async def fu_status(sid, data):
+    fu_id = data["fu_id"]
 
     FU_REGISTRY[fu_id] = {
         "fu_id": fu_id,
-        "sensor_data": data.get("sensor_data", {}),
-        "timestamp": time.time(),
-        "satellite": data.get("satellite"),
-        "az": FIELD_UNITS.get(fu_id, {}).get("az"),
-        "el": FIELD_UNITS.get(fu_id, {}).get("el"),
+        "state": data.get("state", "IDLE"),
+        "health": data.get("health", "OK"),
+        "mode": data.get("mode", "AUTO"),
+        "az": data.get("az"),
+        "el": data.get("el"),
         "location": data.get("location"),
+        "last_seen": time.time(),
+        "current_pass": data.get("current_pass"),
     }
 
-    FIELD_UNITS.setdefault(fu_id, {})[
-        "sensor_data"] = data.get("sensor_data", {})
     SID_TO_FU[sid] = fu_id
 
-    await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
+    await sio.emit("fu_registry_update", list(FU_REGISTRY.values()))
 
-    # Send schedule immediately if exists
     if fu_id in SCHEDULE_CACHE:
         await sio.emit(
             "fu_schedule_update",
@@ -272,39 +252,132 @@ async def handle_field_unit_data(sid, data):
             to=sid,
         )
 
-    logger.info("fu_update | %s", fu_id)
+    logger.info("FU_STATUS | %s %s", fu_id, FU_REGISTRY[fu_id]["state"])
 
 
-@sio.on("az_el_result")
-async def az_el_result(sid, data):
-    fu_id = data["fu_id"]
-
-    FIELD_UNITS.setdefault(fu_id, {}).update(
-        {
-            "az": data["az"],
-            "el": data["el"],
-            "gps": data.get("gps"),
-            "satellite": data.get("satellite_name"),
-        }
+@sio.on("fu_command_ack")
+async def fu_command_ack(sid, data):
+    logger.info(
+        "CMD_ACK | fu=%s cmd=%s status=%s",
+        data.get("fu_id"),
+        data.get("command_id"),
+        data.get("status"),
     )
-
-    await sio.emit(
-        "az_el_command",
-        {"fu_id": fu_id, "az": data["az"], "el": data["el"]},
-    )
-
-    logger.info("az_el | %s AZ=%s EL=%s", fu_id, data["az"], data["el"])
 
 
 @sio.event
 async def disconnect(sid):
     fu_id = SID_TO_FU.pop(sid, None)
-    if fu_id:
-        FU_REGISTRY.pop(fu_id, None)
-        save_field_units()
+    if fu_id and fu_id in FU_REGISTRY:
+        FU_REGISTRY[fu_id]["state"] = "OFFLINE"
+        FU_REGISTRY[fu_id]["health"] = "ERROR"
+
+        await sio.emit("fu_registry_update", list(FU_REGISTRY.values()))
         logger.info("disconnect | %s", fu_id)
 
-    await sio.emit("client_data_update", {"clients": list(FU_REGISTRY.values())})
+
+# ============================================================
+# BACKGROUND TASKS
+# ============================================================
+async def fu_watchdog():
+    while True:
+        await asyncio.sleep(5)
+        if mark_fu_offline():
+            await sio.emit("fu_registry_update", list(FU_REGISTRY.values()))
+
+
+# ============================================================
+# ACTIVITY EXECUTION ENGINE
+# ============================================================
+
+async def activity_executor():
+    """
+    Authoritative ground-station execution loop.
+    """
+    logger.info("Activity executor started")
+
+    while True:
+        now = time.time()
+
+        for fu_id, activities in SCHEDULE_CACHE.items():
+            fu = FU_REGISTRY.get(fu_id)
+            if not fu or fu["state"] != "IDLE":
+                continue
+
+            for activity in activities:
+                if activity["state"] != "PLANNED":
+                    continue
+
+                start = iso_to_epoch(activity["start_time"])
+                end = iso_to_epoch(activity["end_time"])
+
+                # Start activity
+                if start <= now <= end:
+                    logger.info(
+                        "ACTIVATE | %s %s",
+                        fu_id,
+                        activity["satellite"],
+                    )
+
+                    activity["state"] = "ACTIVE"
+                    ACTIVITY_STATE[activity["activity_id"]] = {
+                        "fu_id": fu_id,
+                        "activity": activity,
+                        "started_at": now,
+                    }
+
+                    # Send TRACK command
+                    await send_fu_command(
+                        fu_id,
+                        "track",
+                        {
+                            "satellite": activity["satellite"],
+                            "norad_id": activity["norad_id"],
+                            "end_time": activity["end_time"],
+                        },
+                    )
+
+                    fu["state"] = "BUSY"
+                    fu["current_pass"] = activity["activity_id"]
+
+        # Complete activities
+        for act_id, ctx in list(ACTIVITY_STATE.items()):
+            activity = ctx["activity"]
+            fu_id = ctx["fu_id"]
+            fu = FU_REGISTRY.get(fu_id)
+
+            if iso_to_epoch(activity["end_time"]) < now:
+                logger.info(
+                    "COMPLETE | %s %s",
+                    fu_id,
+                    activity["satellite"],
+                )
+
+                activity["state"] = "COMPLETED"
+                ACTIVITY_STATE.pop(act_id)
+
+                if fu:
+                    fu["state"] = "IDLE"
+                    fu["current_pass"] = None
+
+        await asyncio.sleep(1)
+
+
+# ============================================================
+# COMMAND API (GROUND → FU)
+# ============================================================
+async def send_fu_command(fu_id: str, cmd_type: str, args: dict):
+    cmd = {
+        "command_id": str(uuid.uuid4()),
+        "fu_id": fu_id,
+        "type": cmd_type,
+        "args": args,
+        "timestamp": time.time(),
+    }
+
+    await sio.emit("fu_command", cmd)
+    logger.info("CMD_SENT | %s %s", fu_id, cmd_type)
+    return cmd
 
 
 # ============================================================

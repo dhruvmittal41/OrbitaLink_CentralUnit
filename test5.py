@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """
-fu_registry.py
-Heartbeat client for OrbitaLink Field Units
+fu_client.py
+CCSDS-style Field Unit housekeeping & status client
 """
 
 import time
 import uuid
-import requests
 import os
+import socketio
+import requests
 
-SERVER_HTTP = "https://orbitalink-centralunit.onrender.com"
-API_FU = f"{SERVER_HTTP}/api/fu"
-HEARTBEAT_INTERVAL = 30  # seconds
+SERVER_URL = "https://orbitalink-centralunit.onrender.com"
+SOCKET_URL = SERVER_URL
+HEARTBEAT_INTERVAL = 10  # seconds
 
 FU_ID_FILE = "fu_id.txt"
-_cached_location = None
+
+# ==========================================================
+# FU ID
+# ==========================================================
 
 
 def get_mac_based_id():
@@ -33,75 +37,94 @@ def load_or_create_fu_id():
     return fu_id
 
 
-def get_public_ip():
+# ==========================================================
+# LOCATION (STATIC OR GPS)
+# ==========================================================
+def get_location():
+    """
+    Replace this later with real GPS.
+    """
     try:
-        return requests.get("https://api.ipify.org", timeout=5).text.strip()
+        resp = requests.get("https://ipapi.co/json/", timeout=5)
+        data = resp.json()
+        return {
+            "latitude": data.get("latitude"),
+            "longitude": data.get("longitude"),
+        }
     except Exception:
         return None
 
 
-def get_location_from_ip(ip):
-    global _cached_location
-
-    if _cached_location:
-        return _cached_location
-
-    try:
-        resp = requests.get(f"https://ipapi.co/{ip}/json/", timeout=5)
-        data = resp.json()
-
-        lat = data.get("latitude")
-        lon = data.get("longitude")
-
-        if lat is None or lon is None:
-            return None
-
-        _cached_location = {
-            "latitude": lat,
-            "longitude": lon,
-            "city": data.get("city"),
-            "region": data.get("region"),
-            "country": data.get("country_name"),
-            "source": "ip"
-        }
-
-        return _cached_location
-
-    except Exception as e:
-        print("[ERROR] Geo lookup failed:", e)
-        return None
+# ==========================================================
+# SOCKET.IO CLIENT
+# ==========================================================
+sio = socketio.Client(reconnection=True)
+fu_id = load_or_create_fu_id()
+location = get_location()
 
 
-def register_fu(fu_id):
-    public_ip = get_public_ip()
+@sio.event
+def connect():
+    print(f"[FU {fu_id}] Connected to Ground Station")
 
-    payload = {
-        "fu_id": fu_id,
-        "satellite": None,
-        "sensor_data": {},
-    }
 
-    if public_ip:
-        location = get_location_from_ip(public_ip)
-        if location:
-            payload["location"] = location
+@sio.event
+def disconnect():
+    print(f"[FU {fu_id}] Disconnected")
+
+
+@sio.on("fu_command")
+def handle_command(cmd):
+    """
+    Execute command and ACK/NACK
+    """
+    cmd_id = cmd["command_id"]
+    cmd_type = cmd["type"]
+
+    print(f"[FU {fu_id}] CMD {cmd_type}")
 
     try:
-        resp = requests.post(API_FU, json=payload, timeout=5)
-        print(f"[FU {fu_id}] POST /api/fu → {resp.status_code}")
-        return resp.status_code == 200
+        # --- EXECUTION STUB ---
+        # Replace with real antenna control
+        time.sleep(1)
+
+        sio.emit("fu_command_ack", {
+            "fu_id": fu_id,
+            "command_id": cmd_id,
+            "status": "ACK"
+        })
+
     except Exception as e:
-        print(f"[FU {fu_id}] ERROR:", e)
-        return False
+        sio.emit("fu_command_ack", {
+            "fu_id": fu_id,
+            "command_id": cmd_id,
+            "status": "NACK",
+            "reason": str(e)
+        })
+
+
+# ==========================================================
+# MAIN LOOP
+# ==========================================================
+def heartbeat():
+    while True:
+        sio.emit("fu_status", {
+            "fu_id": fu_id,
+            "state": "IDLE",
+            "health": "OK",
+            "mode": "AUTO",
+            "az": None,
+            "el": None,
+            "location": location,
+            "current_pass": None
+        })
+        time.sleep(HEARTBEAT_INTERVAL)
 
 
 def main():
-    fu_id = load_or_create_fu_id()
-    print(f"[START] Field Unit ID = {fu_id}")
-
-    while True:
-        register_fu(fu_id)
-        time.sleep(HEARTBEAT_INTERVAL)
+    print(f"[START] FU ID = {fu_id}")
+    sio.connect(SOCKET_URL, transports=["websocket"])
+    heartbeat()
 
 
 if __name__ == "__main__":

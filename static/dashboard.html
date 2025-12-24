@@ -2,86 +2,50 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OrbitaLink Ground Station</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- Styles -->
     <link rel="stylesheet" href="/static/css/style.css" />
-
-    <!-- Socket.IO -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-
-    <!-- Dashboard Logic -->
     <script defer src="/static/js/dashboard.js"></script>
   </head>
 
   <body>
-    <!-- ================================================= -->
     <!-- HEADER -->
-    <!-- ================================================= -->
     <header class="header">
       <h1>🛰️ OrbitaLink Ground Station</h1>
-      <span id="status" class="status-indicator">🟢 Connected</span>
+      <span id="status" class="status-indicator">🟢 CONNECTED</span>
     </header>
 
-    <!-- ================================================= -->
     <!-- MAIN -->
-    <!-- ================================================= -->
     <main class="main-layout">
-      <!-- ========================= -->
-      <!-- MISSION CONTROL PANEL -->
-      <!-- ========================= -->
+      <!-- MISSION CONTROL -->
       <section class="control-panel">
         <h2>🎛 Mission Control</h2>
-
         <div class="control-buttons">
-          <button onclick="fetch('/api/scheduler/run', { method: 'POST' })">
-            ▶️ Run Scheduler
-          </button>
-
-          <button
-            onclick="fetch('/api/control/save_state', { method: 'POST' })"
-          >
-            💾 Save State
-          </button>
-
-          <button
-            onclick="fetch('/api/control/clear_logs', { method: 'POST' })"
-          >
-            🧹 Clear Logs
-          </button>
-
-          <button
-            class="danger"
-            onclick="fetch('/api/control/disconnect_all', { method: 'POST' })"
-          >
+          <button onclick="runScheduler()">▶️ Run Scheduler</button>
+          <button class="danger" onclick="disconnectAll()">
             🔌 Disconnect All
           </button>
         </div>
       </section>
 
-      <!-- ========================= -->
       <!-- FIELD UNITS -->
-      <!-- ========================= -->
       <section class="clients-panel">
-        <h2>📡 Active Field Units</h2>
+        <h2>📡 Field Units</h2>
         <div id="client-container" class="card-container"></div>
       </section>
 
-      <!-- ========================= -->
       <!-- LOGS -->
-      <!-- ========================= -->
       <section class="logs-panel">
         <h2>📜 System Logs</h2>
         <div id="log-box" class="log-box"></div>
       </section>
     </main>
 
-    <!-- ================================================= -->
     <!-- FOOTER -->
-    <!-- ================================================= -->
     <footer class="footer">
-      <p>&copy; 2025 OrbitaLink Pvt Ltd • Live Groundstation Monitor</p>
+      <p>© 2025 OrbitaLink Pvt Ltd • CCSDS-Style Ground Segment</p>
     </footer>
   </body>
 </html>
