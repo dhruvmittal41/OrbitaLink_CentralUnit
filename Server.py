@@ -7,8 +7,7 @@ import uuid
 from typing import Dict
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 import socketio
@@ -20,6 +19,14 @@ from log_utils import setup_logging, event_log
 from Scheduler.Schedule_Generator import generate_schedule
 
 from datetime import datetime
+from pydantic import BaseModel
+
+
+class CustomTrackRequest(BaseModel):
+    fu_id: str
+    norad_id: int
+    start_time: str
+    end_time: str
 
 
 # ============================================================
@@ -51,7 +58,6 @@ sio = socketio.AsyncServer(
     cors_allowed_origins="*",
     ping_timeout=20,
     ping_interval=10,
-    message_queue="redis://localhost:6379",
 )
 
 asgi_app = socketio.ASGIApp(sio, other_asgi_app=app)
@@ -63,8 +69,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # ============================================================
@@ -167,11 +171,6 @@ async def startup():
     asyncio.create_task(activity_executor())
 
 
-@app.get("/")
-async def dashboard():
-    return FileResponse("static/dashboard.html")
-
-
 @app.get("/api/logs")
 async def api_logs():
     return JSONResponse(event_log[-LOG_HISTORY_LIMIT:])
@@ -212,6 +211,36 @@ async def run_scheduler(reason: str):
 
     finally:
         SCHEDULER_STATE["running"] = False
+
+
+@app.post("/api/track/custom")
+async def create_custom_tracking(req: CustomTrackRequest):
+    activity_id = str(uuid.uuid4())
+
+    activity = {
+        "activity_id": activity_id,
+        "satellite": f"CAT-{req.norad_id}",
+        "norad_id": req.norad_id,
+        "type": "CUSTOM_TRACK",
+        "start_time": req.start_time,
+        "end_time": req.end_time,
+        "state": "PLANNED",
+    }
+
+    SCHEDULE_CACHE.setdefault(req.fu_id, []).append(activity)
+
+    with open(ASSIGN_FILE, "w") as f:
+        json.dump(SCHEDULE_CACHE, f, indent=2)
+
+    await push_all_schedules()
+
+    logger.info(
+        "CUSTOM_TRACK_CREATED | fu=%s norad=%s",
+        req.fu_id,
+        req.norad_id,
+    )
+
+    return {"status": "ok", "activity_id": activity_id}
 
 
 # ============================================================
@@ -384,4 +413,5 @@ async def send_fu_command(fu_id: str, cmd_type: str, args: dict):
 # MAIN
 # ============================================================
 if __name__ == "__main__":
-    uvicorn.run(asgi_app, host="0.0.0.0", port=8080)
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run(asgi_app, host="0.0.0.0", port=port)
