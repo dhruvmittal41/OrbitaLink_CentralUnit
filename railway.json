@@ -3,6 +3,6 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "uvicorn server:asgi_app --host 0.0.0.0 --port $PORT"
+    "startCommand": "uvicorn Server:asgi_app --host 0.0.0.0 --port $PORT"
   }
 }
