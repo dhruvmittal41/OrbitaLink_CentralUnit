@@ -250,13 +250,12 @@ async def create_custom_tracking(req: CustomTrackRequest):
 async def connect(sid, environ, auth=None):
     logger.info("connect | sid=%s", sid)
 
-    await sio.emit("fu_registry_update", list(FU_REGISTRY.values()), to=sid)
-    await sio.emit("fu_schedule_update", SCHEDULE_CACHE, to=sid)
-
 
 @sio.on("fu_status")
 async def fu_status(sid, data):
     fu_id = data["fu_id"]
+    await sio.emit("fu_registry_update", list(FU_REGISTRY.values()))
+    await sio.emit("fu_schedule_update", {fu_id: SCHEDULE_CACHE.get(fu_id, [])}, to=sid)
 
     FU_REGISTRY[fu_id] = {
         "fu_id": fu_id,

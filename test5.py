@@ -10,7 +10,7 @@ import os
 import socketio
 import requests
 
-SERVER_URL = "https://orbitalink-centralunit.onrender.com"
+SERVER_URL = "https://orbitalinkcentralunit-production.up.railway.app"
 SOCKET_URL = SERVER_URL
 HEARTBEAT_INTERVAL = 10  # seconds
 

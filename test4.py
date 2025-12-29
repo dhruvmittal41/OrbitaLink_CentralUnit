@@ -1,128 +1,130 @@
 #!/usr/bin/env python3
-"""
-fu_registry.py
-FU heartbeat to POST /api/fu.
-Sends:
-  - fu_id
-  - ip (public)
-  - occupied_slots
-  - location (derived from IP)
-"""
-
+import socketio
 import time
 import uuid
-import requests
-import socket
 import os
+import signal
+import sys
 
-SERVER_HTTP = "https://orbitalink-centralunit.onrender.com"
-
-API_FU = f"{SERVER_HTTP}/api/fu"
-HEARTBEAT_INTERVAL = 30  # seconds
+# ============================================================
+# CONFIG
+# ============================================================
+SERVER_URL = "https://orbitalinkcentralunit-production.up.railway.app"
+HEARTBEAT_INTERVAL = 10  # seconds
 
 FU_ID_FILE = "fu_id.txt"
 
-# Cache location so we don't geolocate every heartbeat
-_cached_location = None
-
-
-def get_mac_address():
-    mac = uuid.getnode()
-    return ':'.join(f"{(mac >> ele) & 0xff:02x}" for ele in range(40, -1, -8))
+# ============================================================
+# HELPERS
+# ============================================================
 
 
 def load_or_create_fu_id():
     if os.path.exists(FU_ID_FILE):
         return open(FU_ID_FILE).read().strip()
-    fu = get_mac_address()
+
+    fu_id = f"FU-{uuid.uuid4().hex[:6].upper()}"
     with open(FU_ID_FILE, "w") as f:
-        f.write(fu)
-    return fu
+        f.write(fu_id)
+
+    return fu_id
 
 
-def get_public_ip():
-    """Get public IP address."""
-    try:
-        return requests.get("https://api.ipify.org", timeout=5).text.strip()
-    except Exception:
-        return None
+FU_ID = load_or_create_fu_id()
+
+# ============================================================
+# SOCKET.IO CLIENT
+# ============================================================
+sio = socketio.Client(
+    reconnection=True,
+    reconnection_attempts=0,
+    reconnection_delay=2,
+)
+
+# ============================================================
+# EVENTS
+# ============================================================
 
 
-def get_location_from_ip(ip):
-    global _cached_location
-
-    print(f"[DEBUG] Resolving location for IP: {ip}")
-
-    if _cached_location:
-        print("[DEBUG] Using cached location")
-        return _cached_location
-
-    try:
-        url = f"https://ipapi.co/{ip}/json/"
-
-        resp = requests.get(url, timeout=5)
-
-        data = resp.json()
-
-        lat = data.get("latitude")
-        lon = data.get("longitude")
-
-        if not lat or not lon:
-            print("[WARN] No lat/lon in geo response")
-            return None
-
-        _cached_location = {
-            "latitude": lat,
-            "longitude": lon,
-            "city": data.get("city"),
-            "region": data.get("region"),
-            "country": data.get("country_name"),
-            "source": "ip"
-        }
-
-        return _cached_location
-
-    except Exception as e:
-        print("[ERROR] Geo exception:", e)
-        return None
+@sio.event
+def connect():
+    print(f"[CONNECTED] FU_ID={FU_ID}")
 
 
-def register_fu(fu_id):
-    public_ip = get_public_ip()
-
-    payload = {
-        "fu_id": "FU 004",
-        "ip": public_ip,
-        "occupied_slots": [],
-        "satellite": "NOAA 21 (JPSS-2)"
-    }
-
-    if public_ip:
-        print("[DEBUG] Attempting IP-based geolocation")
-        location = get_location_from_ip(public_ip)
-        if location:
-            payload["location"] = location
-            print("[DEBUG] Payload:", payload)
-
-    try:
-        resp = requests.post(API_FU, json=payload, timeout=5)
-        print(f"[REG] HTTP {resp.status_code}")
-        return resp.status_code == 200
-    except Exception as e:
-        print(f"[REG] Error: {e}")
-        return False
+@sio.event
+def disconnect():
+    print("[DISCONNECTED]")
 
 
-def main():
-    fu_id = load_or_create_fu_id()
-    print(f"[INFO] FU_ID={fu_id}")
+@sio.on("fu_schedule_update")
+def on_schedule_update(data):
+    print("[SCHEDULE UPDATE]")
+    print(data)
+
+
+@sio.on("fu_command")
+def on_fu_command(cmd):
+    print(f"[COMMAND RECEIVED] {cmd}")
+
+    # Simulate command execution
+    time.sleep(1)
+
+    # ACK command
+    sio.emit("fu_command_ack", {
+        "fu_id": FU_ID,
+        "command_id": cmd["command_id"],
+        "status": "OK"
+    })
+
+    print("[COMMAND ACK SENT]")
+
+# ============================================================
+# HEARTBEAT LOOP
+# ============================================================
+
+
+def send_heartbeat():
+    sio.emit("fu_status", {
+        "fu_id": FU_ID,
+        "state": "IDLE",
+        "health": "OK",
+        "mode": "AUTO",
+        "az": None,
+        "el": None,
+        "location": {
+            "latitude": 28.6139,
+            "longitude": 77.2090
+        },
+        "current_pass": None
+    })
+
+    print("[HEARTBEAT SENT]")
+
+# ============================================================
+# CLEAN EXIT
+# ============================================================
+
+
+def shutdown(sig, frame):
+    print("\n[SHUTDOWN]")
+    sio.disconnect()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, shutdown)
+signal.signal(signal.SIGTERM, shutdown)
+
+# ============================================================
+# MAIN
+# ============================================================
+if __name__ == "__main__":
+    print(f"[STARTING FU] {FU_ID}")
+    sio.connect(
+        SERVER_URL,
+        transports=["polling"],
+        socketio_path="socket.io"
+    )
 
     while True:
-        ok = register_fu(fu_id)
-        if not ok:
-            print("[WARN] Registration failed; will retry.")
+        send_heartbeat()
         time.sleep(HEARTBEAT_INTERVAL)
-
-
-if __name__ == "__main__":
-    main()
