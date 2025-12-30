@@ -29,6 +29,11 @@ class CustomTrackRequest(BaseModel):
     end_time: str
 
 
+class NoradTrackRequest(BaseModel):
+    fu_id: str
+    norad_id: int
+
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
@@ -184,6 +189,58 @@ async def api_fu_registry():
 @app.get("/api/scheduler/status")
 async def scheduler_status():
     return SCHEDULER_STATE
+
+
+@app.post("/api/fu/noradid")
+async def send_norad_id(req: NoradTrackRequest):
+    fu = FU_REGISTRY.get(req.fu_id)
+
+    if not fu:
+        return JSONResponse(
+            status_code=404,
+            content={"status": "error", "message": "FU not found"},
+        )
+
+    if fu["state"] == "OFFLINE":
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": "FU is offline"},
+        )
+
+    if not (10000 <= req.norad_id <= 99999):
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": "Invalid NORAD ID"},
+        )
+
+    # Create ephemeral activity
+    activity_id = str(uuid.uuid4())
+
+    fu["state"] = "BUSY"
+    fu["current_pass"] = activity_id
+
+    # Send TRACK command to FU
+    await send_fu_command(
+        req.fu_id,
+        "track",
+        {
+            "norad_id": req.norad_id,
+            "mode": "MANUAL",
+        },
+    )
+
+    logger.info(
+        "MANUAL_TRACK | fu=%s norad=%s",
+        req.fu_id,
+        req.norad_id,
+    )
+
+    return {
+        "status": "ok",
+        "fu_id": req.fu_id,
+        "norad_id": req.norad_id,
+        "activity_id": activity_id,
+    }
 
 
 @app.post("/api/scheduler/run")

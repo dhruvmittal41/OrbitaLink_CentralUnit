@@ -35,11 +35,7 @@ FU_ID = load_or_create_fu_id()
 # ============================================================
 # SOCKET.IO CLIENT
 # ============================================================
-sio = socketio.Client(
-    reconnection=True,
-    reconnection_attempts=0,
-    reconnection_delay=2,
-)
+sio = socketio.Client(logger=True, engineio_logger=True)
 
 # ============================================================
 # EVENTS
@@ -120,9 +116,8 @@ signal.signal(signal.SIGTERM, shutdown)
 if __name__ == "__main__":
     print(f"[STARTING FU] {FU_ID}")
     sio.connect(
-        SERVER_URL,
+        "https://orbitalinkcentralunit-production.up.railway.app",
         transports=["polling"],
-        socketio_path="socket.io"
     )
 
     while True:
